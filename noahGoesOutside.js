@@ -53,44 +53,12 @@ function sketchProc(processing) {
               height: tile.imageheight,
               props
             };
-            console.log(tiles[id]);
             return;
           }
         }
         console.error("ID " + id + " was not loaded.");
       });
       return tiles;
-    };
-
-    var getBoundaries = function(layer) {
-      if (layer.type !== "objectgroup") {
-        console.error("Layer '" + layer.name + "' is not of type objectgroup.");
-        return [];
-      }
-      var boundaries = [];
-      for (var i = 0; i < layer.objects.length; i++) {
-        var obj = layer.objects[i];
-        if (
-          uc(obj.x) &&
-          uc(obj.y) &&
-          uc(obj.width) &&
-          uc(obj.height) &&
-          uc(obj.rotation)
-        ) {
-          boundaries.push(
-            new Boundary(
-              obj.x,
-              obj.y,
-              obj.width,
-              -obj.height,
-              (obj.rotation / 180) * Math.PI
-            )
-          );
-        } else {
-          console.warn("Invalid boundary object in layer.", obj);
-        }
-      }
-      return boundaries;
     };
 
     class Positionable {
@@ -172,26 +140,25 @@ function sketchProc(processing) {
       update(tilemap, tiles) {
         if (this.falling) {
           this.addVelocity(GRAVITY);
-          console.log(this.v.x, this.v.y, this.jumps);
         }
         this.updatePosition();
         while (this.checkCollision(tilemap, tiles));
         if (keys[LEFT]) {
           this.addVelocity(new PVector(-2, 0));
-          // this.p.x -= 4;
         } else if (keys[RIGHT]) {
           this.addVelocity(new PVector(2, 0));
-          // this.p.x += 4;
         }
         if (keys[UP] && (!this.falling || this.jumps > 0)) {
           keys[UP] = false;
           this.jumps--;
           this.v.y = -JUMP_VELOCITY;
+          this.falling = true;
         }
       }
 
       checkCollision(tilemap, tiles) {
         var fallingDown = this.falling && this.v.y > 0;
+        var jumpingUp = this.falling && this.v.y < 0;
         var movingLeft = this.v.x < 0;
         var movingRight = this.v.x > 0;
         var cps = this.collisionPoints();
@@ -218,27 +185,41 @@ function sketchProc(processing) {
               collideTop: tile.props.collideTop || tile.props.collide,
               collide: tile.props.collide
             };
-            if (tile.props.collide && ["tr", "mr", "tl", "ml"].includes(k)) {
-              console.log(this.v.x, tile, k, c[k]);
-            }
           }
         }, this);
+        if (jumpingUp && c.ml.collide && (c.tl.collide || c.tr.collide)) {
+          this.p.y =
+            floor(this.p.y / tilemap.tileheight) * tilemap.tileheight +
+            this.h +
+            1;
+          this.v.y = 0;
+          return true;
+        }
         if (movingLeft && (c.ml.collide || c.tl.collide)) {
           this.p.x = ceil(this.p.x / tilemap.tilewidth) * tilemap.tilewidth + 1;
           this.v.x = 0;
-          console.log("here");
           return true;
         }
         if (movingRight && (c.mr.collide || c.tr.collide)) {
           this.p.x =
-            floor(this.p.x / tilemap.tilewidth) * tilemap.tilewidth - 1;
+            ceil(this.p.x / tilemap.tilewidth) * tilemap.tilewidth - this.w - 1;
           this.v.x = 0;
+          return true;
+        }
+        if (jumpingUp && !c.ml.collide && (c.tl.collide || c.tr.collide)) {
+          this.p.y =
+            floor(this.p.y / tilemap.tileheight) * tilemap.tileheight +
+            this.h +
+            1;
+          this.v.y = 0;
           return true;
         }
         if (
           fallingDown &&
-          (c.bl.collideTop || c.br.collideTop) &&
-          !(c.ml.collideTop || c.mr.collideTop)
+          (c.bl.collide ||
+            c.br.collide ||
+            ((c.bl.collideTop || c.br.collideTop) &&
+              !(c.ml.collideTop || c.mr.collideTop)))
         ) {
           this.falling = false;
           this.p.y = floor(this.p.y / tilemap.tileheight) * tilemap.tileheight;
@@ -305,16 +286,9 @@ function sketchProc(processing) {
       }
     };
 
-    console.log(TileMaps);
-
     var tilemap = TileMaps.TileMap1;
     var tiles = getTiles(tilemap);
-    // var boundaries = getBoundaries(
-    //   tilemap.layers.find(function(x) {
-    //     return x.name === "colision_rects";
-    //   })
-    // );
-    var player1 = new Player(105, 35, 70, 70, null);
+    var player1 = new Player(105, 35, 64, 64, null);
     var camera = new Camera(SCALE, CAMERA_BUFFER);
 
     var keyPressed = function() {
@@ -338,9 +312,6 @@ function sketchProc(processing) {
         drawLayer(camera, layer, tilemap, tiles);
       });
       player1.draw();
-      // boundaries.forEach(function(boundary) {
-      //   boundary.draw();
-      // });
       popMatrix();
     };
   }
