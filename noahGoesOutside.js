@@ -530,7 +530,6 @@ function sketchProc(processing) {
       }
       if (keys[" "]) {
         var exitLoc = new PVector(exit.x, exit.y, 0);
-        console.log(exitLoc, noah.p.dist(exitLoc));
         if (noah.p.dist(exitLoc) < tilemap.tilewidth) {
           level = "blank";
         }
