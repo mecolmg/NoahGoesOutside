@@ -5,6 +5,14 @@ function sketchProc(processing) {
       frameRate(60);
     };
 
+    var REQUESTED_IMAGES = [];
+
+    var getImage = function(url) {
+      var image = requestImage(url);
+      REQUESTED_IMAGES.push(image);
+      return image;
+    };
+
     // CONSTANTS:
     var DEBUG_MODE = false;
     var SCALE = 2;
@@ -17,22 +25,30 @@ function sketchProc(processing) {
     var DEFAULT_AIR_RES = 0.98;
     var DEFAULT_JUMP_VELOCITY = 8;
     var DEFAULT_FPS = 7;
+    var NOAH_WALK_IMGS = [
+      getImage("NGO_Noah/noah_walk_0.png"),
+      getImage("NGO_Noah/noah_walk_1.png"),
+      getImage("NGO_Noah/noah_walk_2.png"),
+      getImage("NGO_Noah/noah_walk_3.png")
+    ];
+    var NOAH_JUMP_IMGS = [getImage("NGO_Noah/noah_walk_1.png")];
+    var NGO_TITLE = getImage("NGO_title.png");
+    var NGO_INSTRUCTIONS = getImage("NGO_instructions.png");
+    var NGO_INSTRUCTIONS_SCREEN = getImage("NGO_instructions_screen.png");
+    var NGO_CREATOR = getImage("NGO_creator.png");
+    var NGO_COMING_SOON = getImage("NGO_coming_soon.png");
 
     // GLOBALS:
     var gameInit = false;
     var keys = [];
     var spritesheets = {};
-    var REQUESTED_IMAGES = [];
+    var tilemap, tiles, noah, camera, start, doors;
+    var showInstructions = false;
+    var level = "Level1";
 
     // uc = undefined check. This is a quick
     var uc = function(x) {
       return x !== undefined;
-    };
-
-    var getImage = function(url) {
-      var image = requestImage(url);
-      REQUESTED_IMAGES.push(image);
-      return image;
     };
 
     var checkRequestedImages = function(callback) {
@@ -56,6 +72,33 @@ function sketchProc(processing) {
         if (tileset.image) {
           spritesheets[tileset.image] = getImage(tileset.image);
         }
+      }
+    };
+
+    var loadLevel = function(levelName) {
+      if (TileMaps[levelName]) {
+        gameInit = false;
+        tilemap = getTileMap(TileMaps[levelName]);
+        console.log(tilemap);
+        start = getPoint(tilemap, "start") || { x: 100, y: 100 };
+        doors = getDoors(tilemap);
+        var init = function() {
+          tiles = getTiles(tilemap);
+          console.log(tiles);
+          noah = new Player(
+            start.x,
+            start.y,
+            18,
+            18,
+            start.props.dir === 1 ? RIGHT : LEFT,
+            NOAH_WALK_IMGS,
+            NOAH_JUMP_IMGS
+          );
+          camera = new Camera(SCALE, CAMERA_BUFFER);
+          gameInit = true;
+        };
+        fetchSpritesheets(tilemap);
+        checkRequestedImages(init);
       }
     };
 
@@ -150,6 +193,45 @@ function sketchProc(processing) {
       }
     };
 
+    var getDoors = function(tilemap) {
+      var doors = [];
+      for (var i = 0; i < tilemap.layers.length; i++) {
+        if (tilemap.layers[i].type === "objectgroup") {
+          var layer = tilemap.layers[i];
+          var doorPoints = [];
+          for (var j = 0; j < layer.objects.length; j++) {
+            var point = layer.objects[j];
+            point.props = {};
+            if (point.properties) {
+              point.properties.forEach(function(prop) {
+                point.props[prop.name] = prop.value;
+              });
+            }
+            if (point.props.door) {
+              doorPoints.push(point);
+            }
+          }
+          var layerDoors = doorPoints.map(function(doorPoint) {
+            return {
+              ...doorPoint,
+              ...doorPoint.props
+            };
+          });
+          doors = [...doors, ...layerDoors];
+        }
+      }
+      return doors;
+    };
+
+    var atDoor = function(loc, doors) {
+      for (var i = 0; i < doors.length; i++) {
+        var doorLoc = new PVector(doors[i].x, doors[i].y, 0);
+        if (loc.dist(doorLoc) < tilemap.tilewidth) {
+          return doors[i];
+        }
+      }
+    };
+
     class Positionable {
       constructor(x, y, _width, _height, angle) {
         this.p = new PVector(x, y, 0);
@@ -220,7 +302,7 @@ function sketchProc(processing) {
             if (layer.type !== "tilelayer" || layer.props.background) {
               return false;
             }
-            var id = layer.data[ty * layer.height + tx];
+            var id = layer.data[ty * layer.width + tx];
             if (id !== 0) {
               tile = tiles[id];
               tileLayer = layer;
@@ -314,7 +396,7 @@ function sketchProc(processing) {
     }
 
     class Character extends Positionable {
-      constructor(x, y, w, h, walkImgs, jumpImgs) {
+      constructor(x, y, w, h, dir, walkImgs, jumpImgs) {
         super(x, y, w, h, 0);
         this.walkImgs = walkImgs;
         this.jumpImgs = jumpImgs;
@@ -322,7 +404,7 @@ function sketchProc(processing) {
         this.animationFrame = 0;
         this.img = this.walkImgs[this.animationFrame];
         this.animation = "walk";
-        this.dir = LEFT;
+        this.dir = dir;
       }
 
       jump() {
@@ -390,8 +472,8 @@ function sketchProc(processing) {
     }
 
     class Player extends Character {
-      constructor(x, y, w, h, walkImgs, jumpImgs) {
-        super(x, y, w, h, walkImgs, jumpImgs);
+      constructor(x, y, w, h, dir, walkImgs, jumpImgs) {
+        super(x, y, w, h, dir, walkImgs, jumpImgs);
         this.jumps = PLAYER_JUMPS;
       }
 
@@ -475,7 +557,7 @@ function sketchProc(processing) {
       for (; r >= max(camera.y - camera.ry, 0); r--) {
         var c = max(camera.x - camera.rx, 0);
         for (; c < min(camera.x + camera.rx, layer.width); c++) {
-          var id = layer.data[r * layer.height + c];
+          var id = layer.data[r * layer.width + c];
           if (id !== 0) {
             var tile = tiles[id];
             var x = c * tilemap.tilewidth;
@@ -486,41 +568,7 @@ function sketchProc(processing) {
       }
     };
 
-    var NOAH_WALK_IMGS = [
-      getImage("NGO_Noah/noah_walk_0.png"),
-      getImage("NGO_Noah/noah_walk_1.png"),
-      getImage("NGO_Noah/noah_walk_2.png"),
-      getImage("NGO_Noah/noah_walk_3.png")
-    ];
-    var NOAH_JUMP_IMGS = [getImage("NGO_Noah/noah_walk_1.png")];
-    var NGO_TITLE = getImage("NGO_title.png");
-    var NGO_INSTRUCTIONS = getImage("NGO_instructions.png");
-    var NGO_INSTRUCTIONS_SCREEN = getImage("NGO_instructions_screen.png");
-    var NGO_CREATOR = getImage("NGO_creator.png");
-    var NGO_COMING_SOON = getImage("NGO_coming_soon.png");
-
-    var tiles, noah, camera;
-    var tilemap = getTileMap(TileMaps.HomeScreenMap);
-    var init = function() {
-      tiles = getTiles(tilemap);
-      var start = getPoint(tilemap, "start") || { x: 100, y: 100 };
-      noah = new Player(
-        start.x,
-        start.y,
-        18,
-        18,
-        NOAH_WALK_IMGS,
-        NOAH_JUMP_IMGS
-      );
-      camera = new Camera(SCALE, CAMERA_BUFFER);
-      gameInit = true;
-    };
-    fetchSpritesheets(tilemap);
-    checkRequestedImages(init);
-
-    var showInstructions = false;
-    var level = "start";
-    var exit = getPoint(tilemap, "exit") || { x: 0, y: height };
+    loadLevel(level);
 
     var keyPressed = function() {
       keys[keyCode] = true;
@@ -529,9 +577,10 @@ function sketchProc(processing) {
         showInstructions = !showInstructions;
       }
       if (keys[" "]) {
-        var exitLoc = new PVector(exit.x, exit.y, 0);
-        if (noah.p.dist(exitLoc) < tilemap.tilewidth) {
-          level = "blank";
+        var door = atDoor(noah.p, doors);
+        if (door && door.props.nextLevel) {
+          level = door.props.nextLevel;
+          loadLevel(level);
         }
       }
     };
@@ -547,16 +596,8 @@ function sketchProc(processing) {
       camera.update(noah, tilemap);
 
       pushMatrix();
-      background(0, 0, 0);
+      background(200, 200, 200);
       switch (level) {
-        case "start": {
-          camera.show();
-          tilemap.layers.forEach(function(layer) {
-            drawLayer(camera, layer, tilemap, tiles);
-          });
-          noah.draw();
-          break;
-        }
         case "blank": {
           image(
             NGO_COMING_SOON,
@@ -565,9 +606,17 @@ function sketchProc(processing) {
           );
           break;
         }
+        default: {
+          camera.show();
+          tilemap.layers.forEach(function(layer) {
+            drawLayer(camera, layer, tilemap, tiles);
+          });
+          noah.draw();
+          break;
+        }
       }
       popMatrix();
-      if (level === "start") {
+      if (level === "HomeScreenMap") {
         image(NGO_TITLE, width / 2 - NGO_TITLE.width / 2, 10);
         image(NGO_INSTRUCTIONS, width / 2 - NGO_INSTRUCTIONS.width / 2, 280);
         image(NGO_CREATOR, width / 2 - NGO_CREATOR.width / 2, 330);
