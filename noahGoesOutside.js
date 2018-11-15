@@ -14,7 +14,7 @@ function sketchProc(processing) {
     };
 
     // CONSTANTS:
-    var DEBUG_MODE = true;
+    var DEBUG_MODE = false;
     var SCALE = 2;
     var CAMERA_BUFFER = 2;
     var GRAVITY = new PVector(0, 0.5, 0);
@@ -23,8 +23,11 @@ function sketchProc(processing) {
     var DEFAULT_MAXDY = 10;
     var DEFAULT_FRICTION = 0.7;
     var DEFAULT_AIR_RES = 0.98;
-    var DEFAULT_JUMP_VELOCITY = 8;
+    var DEFAULT_JUMP_VELOCITY = 7;
     var DEFAULT_FPS = 7;
+    /* @pjs font="VT323-Regular.ttf"; */
+    var NGO_FONT = createFont("VT323", 32);
+    console.log(NGO_FONT);
     var NOAH_WALK_IMGS = [
       getImage("NGO_Noah/noah_walk_0.png"),
       getImage("NGO_Noah/noah_walk_1.png"),
@@ -32,6 +35,7 @@ function sketchProc(processing) {
       getImage("NGO_Noah/noah_walk_3.png")
     ];
     var NOAH_JUMP_IMGS = [getImage("NGO_Noah/noah_walk_1.png")];
+    var NOAH_DIALOG_IMG = getImage("NGO_Noah/noah_dialog_0.png");
     var FLY_WALK_IMGS = [
       getImage("NGO_Fly/fly_0.png"),
       getImage("NGO_Fly/fly_1.png")
@@ -46,6 +50,7 @@ function sketchProc(processing) {
     // GLOBALS:
     var gameInit = false;
     var keys = [];
+    var dialogs = [];
     var spritesheets = {};
     var tilemap, tiles, noah, camera, start, doors, enemies;
     var showInstructions = false;
@@ -642,6 +647,56 @@ function sketchProc(processing) {
       }
     }
 
+    class Dialog {
+      constructor(name, text, img, bottom) {
+        this.text = name + ": " + text;
+        this.img = img;
+        this.bottom = bottom || false;
+        this.nChars = 1;
+      }
+
+      finished() {
+        return this.nChars >= this.text.length;
+      }
+
+      draw() {
+        pushMatrix();
+        var h = 160;
+        if (this.bottom) {
+          translate(0, height - h - 80);
+        }
+        noStroke();
+        fill(0, 0, 0, 200);
+        rect(20, 40, width - 40, h);
+        rect(40, 20, width - 80, h + 40);
+        translate(40, 40);
+        fill(255, 255, 255, 100);
+        rect(20, 40, 100, h - 80);
+        rect(40, 20, 60, h - 40);
+        image(this.img, 40, 40, 60, 80);
+        translate(140, 20);
+        fill(230, 230, 230);
+        textFont(NGO_FONT, 32);
+        text(this.text.slice(0, this.nChars), 0, 0, width - 240, h - 40);
+        if (this.finished()) {
+          if (!uc(this.t0)) {
+            this.t0 = frameCount + 30;
+          }
+          fill(
+            255,
+            255,
+            255,
+            map(sin((frameCount - this.t0) / 30), -1, 1, 0, 255)
+          );
+          var t = "PRESS SPACE";
+          var tw = textWidth(t);
+          text(t, width - 240 - tw, h - 40);
+        }
+        popMatrix();
+        this.nChars++;
+      }
+    }
+
     var Camera = function(scale_, buffer) {
       this.x = 0;
       this.y = 0;
@@ -714,6 +769,9 @@ function sketchProc(processing) {
         showInstructions = !showInstructions;
       }
       if (keys[" "]) {
+        if (dialogs.length > 0 && dialogs[0].finished()) {
+          dialogs.shift();
+        }
         var door = atDoor(noah.p, doors);
         if (door && door.props.nextLevel) {
           level = door.props.nextLevel;
@@ -727,16 +785,21 @@ function sketchProc(processing) {
       keys[key] = false;
     };
 
+    dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
+    dialogs.push(new Dialog("Noah", "Like... REALLY sucks.", NOAH_DIALOG_IMG));
+
     var draw = function() {
       if (!gameInit) return;
-      noah.update(tilemap, tiles);
       camera.update(noah, tilemap);
-      enemies.forEach(function(enemy) {
-        enemy.update(tilemap, tiles);
-        if (enemy.intersects(noah)) {
-          return restartLevel();
-        }
-      });
+      if (dialogs.length === 0) {
+        noah.update(tilemap, tiles);
+        enemies.forEach(function(enemy) {
+          enemy.update(tilemap, tiles);
+          if (enemy.intersects(noah)) {
+            return restartLevel();
+          }
+        });
+      }
 
       pushMatrix();
       background(200, 200, 200);
@@ -766,6 +829,9 @@ function sketchProc(processing) {
         image(NGO_TITLE, width / 2 - NGO_TITLE.width / 2, 10);
         image(NGO_INSTRUCTIONS, width / 2 - NGO_INSTRUCTIONS.width / 2, 280);
         image(NGO_CREATOR, width / 2 - NGO_CREATOR.width / 2, 330);
+      }
+      if (dialogs.length > 0) {
+        dialogs[0].draw();
       }
       if (showInstructions) {
         fill(20, 20, 20, 220);
