@@ -14,12 +14,12 @@ function sketchProc(processing) {
     };
 
     // CONSTANTS:
-    var DEBUG_MODE = false;
+    var DEBUG_MODE = true;
     var SCALE = 2;
     var CAMERA_BUFFER = 2;
     var GRAVITY = new PVector(0, 0.5, 0);
     var PLAYER_JUMPS = 2;
-    var DEFAULT_MAXDX = 3;
+    var DEFAULT_MAXDX = 2;
     var DEFAULT_MAXDY = 10;
     var DEFAULT_FRICTION = 0.7;
     var DEFAULT_AIR_RES = 0.98;
@@ -32,6 +32,11 @@ function sketchProc(processing) {
       getImage("NGO_Noah/noah_walk_3.png")
     ];
     var NOAH_JUMP_IMGS = [getImage("NGO_Noah/noah_walk_1.png")];
+    var FLY_WALK_IMGS = [
+      getImage("NGO_Fly/fly_0.png"),
+      getImage("NGO_Fly/fly_1.png")
+    ];
+    var FLY_JUMP_IMGS = [getImage("NGO_Fly/fly_0.png")];
     var NGO_TITLE = getImage("NGO_title.png");
     var NGO_INSTRUCTIONS = getImage("NGO_instructions.png");
     var NGO_INSTRUCTIONS_SCREEN = getImage("NGO_instructions_screen.png");
@@ -42,13 +47,17 @@ function sketchProc(processing) {
     var gameInit = false;
     var keys = [];
     var spritesheets = {};
-    var tilemap, tiles, noah, camera, start, doors;
+    var tilemap, tiles, noah, camera, start, doors, enemies;
     var showInstructions = false;
     var level = "Level1";
 
     // uc = undefined check. This is a quick
     var uc = function(x) {
       return x !== undefined;
+    };
+
+    var mod = function(n, m) {
+      return ((n % m) + m) % m;
     };
 
     var checkRequestedImages = function(callback) {
@@ -79,12 +88,11 @@ function sketchProc(processing) {
       if (TileMaps[levelName]) {
         gameInit = false;
         tilemap = getTileMap(TileMaps[levelName]);
-        console.log(tilemap);
         start = getPoint(tilemap, "start") || { x: 100, y: 100 };
         doors = getDoors(tilemap);
+        enemies = getEnemies(tilemap);
         var init = function() {
           tiles = getTiles(tilemap);
-          console.log(tiles);
           noah = new Player(
             start.x,
             start.y,
@@ -100,6 +108,22 @@ function sketchProc(processing) {
         fetchSpritesheets(tilemap);
         checkRequestedImages(init);
       }
+    };
+
+    var restartLevel = function() {
+      start = getPoint(tilemap, "start") || { x: 100, y: 100 };
+      noah = new Player(
+        start.x,
+        start.y,
+        18,
+        18,
+        start.props.dir === 1 ? RIGHT : LEFT,
+        NOAH_WALK_IMGS,
+        NOAH_JUMP_IMGS
+      );
+      camera = new Camera(SCALE, CAMERA_BUFFER);
+      doors = getDoors(tilemap);
+      enemies = getEnemies(tilemap);
     };
 
     var getTileMap = function(tilemap) {
@@ -223,6 +247,38 @@ function sketchProc(processing) {
       return doors;
     };
 
+    var getEnemies = function(tilemap) {
+      var enemies = [];
+      for (var i = 0; i < tilemap.layers.length; i++) {
+        if (tilemap.layers[i].props.enemies) {
+          var layer = tilemap.layers[i];
+          for (var j = 0; j < layer.objects.length; j++) {
+            var obj = layer.objects[j];
+            obj.props = {};
+            if (obj.properties) {
+              obj.properties.forEach(function(prop) {
+                obj.props[prop.name] = prop.value;
+              });
+            }
+            switch (obj.props.type) {
+              case "fly": {
+                enemies.push(
+                  new Fly(
+                    obj.x,
+                    obj.y,
+                    obj.props.dx * tilemap.tilewidth,
+                    obj.props.dy * tilemap.tileheight
+                  )
+                );
+                break;
+              }
+            }
+          }
+        }
+      }
+      return enemies;
+    };
+
     var atDoor = function(loc, doors) {
       for (var i = 0; i < doors.length; i++) {
         var doorLoc = new PVector(doors[i].x, doors[i].y, 0);
@@ -273,6 +329,26 @@ function sketchProc(processing) {
 
       moving() {
         return this.v.mag() > 0.1;
+      }
+
+      intersects(o) {
+        return this.intersectsBox(o.p.x, o.p.y, o.w, o.h);
+      }
+
+      intersectsBox(x, y, w, h) {
+        if (
+          this.p.x - this.w / 2 > x + w / 2 ||
+          x - w / 2 > this.p.x + this.w / 2
+        ) {
+          return false;
+        }
+        if (
+          this.p.y - this.h / 2 > y + h / 2 ||
+          y - h / 2 > this.p.y + this.h / 2
+        ) {
+          return false;
+        }
+        return true;
       }
 
       collisionPoints() {
@@ -405,6 +481,8 @@ function sketchProc(processing) {
         this.img = this.walkImgs[this.animationFrame];
         this.animation = "walk";
         this.dir = dir;
+        this.imageDir = RIGHT;
+        this.xAcc = 0.8;
       }
 
       jump() {
@@ -413,12 +491,12 @@ function sketchProc(processing) {
       }
 
       moveLeft() {
-        this.addVelocity(new PVector(-0.8, 0, 0));
+        this.addVelocity(new PVector(-this.xAcc, 0, 0));
         this.dir = LEFT;
       }
 
       moveRight() {
-        this.addVelocity(new PVector(0.8, 0, 0));
+        this.addVelocity(new PVector(this.xAcc, 0, 0));
         this.dir = RIGHT;
       }
 
@@ -462,12 +540,60 @@ function sketchProc(processing) {
         pushMatrix();
         imageMode(CENTER);
         translate(this.p.x + this.w / 2, this.p.y - this.h / 2);
-        if (this.dir === LEFT) {
+        if (this.dir !== this.imageDir) {
           scale(-1, 1);
         }
         image(this.img, 0, 0);
         imageMode(CORNER);
         popMatrix();
+      }
+    }
+
+    class Enemy extends Character {
+      constructor(x, y, w, h, dir, walkImgs, jumpImgs) {
+        super(x, y, w, h, dir, walkImgs, jumpImgs);
+        this.initialized = false;
+      }
+    }
+
+    class Fly extends Enemy {
+      constructor(x, y, dx, dy) {
+        super(
+          x,
+          y,
+          19,
+          14,
+          dx > 0 ? RIGHT : LEFT,
+          FLY_WALK_IMGS,
+          FLY_WALK_IMGS
+        );
+        this.pInit = new PVector(x, y, 0);
+        this.dx = dx;
+        this.dy = dy;
+        this.v.set(Math.sign(dx), Math.sign(dy), 0);
+        this.imageDir = LEFT;
+        this.friction = 1;
+        this.airRes = 1;
+      }
+
+      update(tilemap, tiles) {
+        this.updatePosition();
+        while (this.handleCollision(tilemap, tiles));
+        if (this.dy === 0) {
+          this.p.y = this.pInit.y + 6 * sin(frameCount / 20);
+        }
+        if (this.p.x > this.pInit.x + abs(this.dx) && this.v.x > -1) {
+          this.v.x += -0.1;
+          this.dir = LEFT;
+        } else if (this.p.x < this.pInit.x - abs(this.dx) && this.v.x < 1) {
+          this.v.x += 0.1;
+          this.dir = RIGHT;
+        }
+        if (this.p.y > this.pInit.y + abs(this.dy) && this.v.y > 0) {
+          this.v.y = -1;
+        } else if (this.p.y < this.pInit.y - abs(this.dy) && this.v.y < 0) {
+          this.v.y = 1;
+        }
       }
     }
 
@@ -554,13 +680,24 @@ function sketchProc(processing) {
 
     var drawLayer = function(camera, layer, tilemap, tiles) {
       var r = min(camera.y + camera.ry, layer.height - 1);
-      for (; r >= max(camera.y - camera.ry, 0); r--) {
+      var rf = max(camera.y - camera.ry, 0);
+      for (; r >= rf; r--) {
         var c = max(camera.x - camera.rx, 0);
-        for (; c < min(camera.x + camera.rx, layer.width); c++) {
-          var id = layer.data[r * layer.width + c];
+        var cf = min(camera.x + camera.rx, layer.width);
+        for (; c < cf; c++) {
+          var dx = (frameCount / 2) % (tilemap.tilewidth * tilemap.width);
+          var col = c;
+          if (layer.props.scroll) {
+            var sd = layer.props.scrollDir;
+            col = mod(c - sd * floor(dx / tilemap.tilewidth), tilemap.width);
+          }
+          var id = layer.data[r * layer.width + col];
           if (id !== 0) {
             var tile = tiles[id];
-            var x = c * tilemap.tilewidth;
+            var x = col * tilemap.tilewidth;
+            if (layer.props.scroll) {
+              x = mod(x + sd * dx, tilemap.width * tilemap.tilewidth);
+            }
             var y = (r + 1) * tilemap.tileheight - tile.height;
             image(tile.image, x, y);
           }
@@ -594,6 +731,12 @@ function sketchProc(processing) {
       if (!gameInit) return;
       noah.update(tilemap, tiles);
       camera.update(noah, tilemap);
+      enemies.forEach(function(enemy) {
+        enemy.update(tilemap, tiles);
+        if (enemy.intersects(noah)) {
+          return restartLevel();
+        }
+      });
 
       pushMatrix();
       background(200, 200, 200);
@@ -612,6 +755,9 @@ function sketchProc(processing) {
             drawLayer(camera, layer, tilemap, tiles);
           });
           noah.draw();
+          enemies.forEach(function(enemy) {
+            enemy.draw();
+          });
           break;
         }
       }
