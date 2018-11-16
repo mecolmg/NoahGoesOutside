@@ -978,8 +978,35 @@ function sketchProc(processing) {
       keys[key] = false;
     };
 
-    // dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
-    // dialogs.push(new Dialog("Noah", "Like... REALLY sucks.", NOAH_DIALOG_IMG));
+    dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
+    dialogs.push(
+      new Dialog(
+        "Noah",
+        "It's barely even a game at this point.",
+        NOAH_DIALOG_IMG
+      )
+    );
+    dialogs.push(
+      new Dialog(
+        "Noah",
+        "Colm probably doesn't even care enough to give me decent lines.",
+        NOAH_DIALOG_IMG
+      )
+    );
+    dialogs.push(
+      new Dialog(
+        "Instructions",
+        "Use Space to grapple and arrow keys to move.",
+        NOAH_DIALOG_IMG
+      )
+    );
+    dialogs.push(
+      new Dialog(
+        "Instructions",
+        "Try not to die... there's like two things that could kill you.",
+        NOAH_DIALOG_IMG
+      )
+    );
 
     var draw = function() {
       if (!gameInit) return;
