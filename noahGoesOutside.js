@@ -1,3 +1,23 @@
+/**
+ * Final Project - Noah Goes Outside
+ * Name: Colm Gallagher
+ * Date: 11/16/2018
+ *
+ * This project is a 2D platformer with
+ * the added mechanic that the main character
+ * Noah has a grappling gun which he can use
+ * to navigate and protect himself from enemies.
+ *
+ * The code is heavily OOP based making it easy
+ * to add new enemies, items, etc.
+ *
+ * The tilemap is created using Tiled, and most
+ * game data for each levels is dynamically loaded
+ * from these maps to reduce unecessary code.
+ *
+ * Game art is from:
+ * https://opengameart.org/content/platformer-art-pixel-redux
+ */
 function sketchProc(processing) {
   with (processing) {
     var setup = function() {
