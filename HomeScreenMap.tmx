@@ -44,7 +44,7 @@
   <properties>
    <property name="background" type="bool" value="true"/>
    <property name="scroll" type="bool" value="true"/>
-   <property name="scrollDir" type="int" value="-1"/>
+   <property name="scrollDir" type="int" value="-2"/>
   </properties>
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

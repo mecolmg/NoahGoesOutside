@@ -49,7 +49,7 @@
                 {
                  "name":"scrollDir",
                  "type":"int",
-                 "value":-1
+                 "value":-2
                 }],
          "type":"tilelayer",
          "visible":true,

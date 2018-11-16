@@ -42,6 +42,8 @@ function sketchProc(processing) {
       getImage("NGO_Fly/fly_1.png")
     ];
     var FLY_JUMP_IMGS = [getImage("NGO_Fly/fly_0.png")];
+    var HUD_LIVES_IMG = NOAH_JUMP_IMGS[0];
+    var HUD_COIN_IMG = getImage("NGO_HUD/hud_coin.png");
     var NGO_TITLE = getImage("NGO_title.png");
     var NGO_INSTRUCTIONS = getImage("NGO_instructions.png");
     var NGO_INSTRUCTIONS_SCREEN = getImage("NGO_instructions_screen.png");
@@ -53,13 +55,24 @@ function sketchProc(processing) {
     var keys = [];
     var dialogs = [];
     var spritesheets = {};
-    var tilemap, tiles, noah, camera, start, doors, enemies, grapplePoints;
+    var tilemap, tiles, noah, camera, start, doors, enemies, grapplePoints, hud;
+    var lives = 3,
+      coins = 0,
+      score = 0;
     var showInstructions = false;
-    var level = "Level1";
+    var level = "HomeScreenMap";
 
     // uc = undefined check. This is a quick
     var uc = function(x) {
       return x !== undefined;
+    };
+
+    Number.prototype.pad = function(size) {
+      var s = String(this);
+      while (s.length < (size || 2)) {
+        s = "0" + s;
+      }
+      return s;
     };
 
     var mod = function(n, m) {
@@ -91,14 +104,15 @@ function sketchProc(processing) {
     };
 
     var loadLevel = function(levelName) {
+      level = levelName;
       if (TileMaps[levelName]) {
         gameInit = false;
-        level = levelName;
         tilemap = getTileMap(TileMaps[level]);
         start = getPoint(tilemap, "start") || { x: 100, y: 100 };
         doors = getDoors(tilemap);
         enemies = getEnemies(tilemap);
         grapplePoints = getGrapplePoints(tilemap);
+        dialogs = getDialogs(tilemap);
         var init = function() {
           tiles = getTiles(tilemap);
           noah = new Player(
@@ -111,6 +125,7 @@ function sketchProc(processing) {
             NOAH_JUMP_IMGS
           );
           camera = new Camera(SCALE, CAMERA_BUFFER);
+          hud = new HUD();
           gameInit = true;
         };
         fetchSpritesheets(tilemap);
@@ -119,7 +134,11 @@ function sketchProc(processing) {
     };
 
     var restartLevel = function() {
-      tilemap = getTileMap(TileMaps[level]);
+      lives--;
+      if (lives < 0) {
+        level = "gameover";
+        return;
+      }
       noah = new Player(
         start.x,
         start.y,
@@ -304,6 +323,32 @@ function sketchProc(processing) {
         }
       }
       return grapplePoints;
+    };
+
+    var getDialogs = function(tilemap) {
+      var dialogs = [];
+      for (var i = 0; i < tilemap.layers.length; i++) {
+        if (tilemap.layers[i].props.dialogs) {
+          var layer = tilemap.layers[i];
+          for (var j = 0; j < layer.objects.length; j++) {
+            var obj = layer.objects[j];
+            obj.props = {};
+            if (obj.properties) {
+              obj.properties.forEach(function(prop) {
+                obj.props[prop.name] = prop.value;
+              });
+            }
+            dialogs.push(
+              new Dialog(obj.props.text, obj.props.character, obj.props.id)
+            );
+          }
+        }
+      }
+      console.log(dialogs);
+
+      return dialogs.sort(function(a, b) {
+        return a.id > b.id;
+      });
     };
 
     var getActiveGP = function(grapplePoints, point, dir) {
@@ -806,6 +851,7 @@ function sketchProc(processing) {
         enemies.forEach(function(enemy) {
           if (enemy.containsPoint(this.hook)) {
             enemy.hit();
+            noah.score += 500;
           }
         }, this);
         if (this.p.dist(this.hook) > MAX_GRAPPLE_DIST) {
@@ -877,11 +923,21 @@ function sketchProc(processing) {
     }
 
     class Dialog {
-      constructor(name, text, img, bottom) {
+      constructor(text, name, id, bottom) {
         this.text = name + ": " + text;
-        this.img = img;
+        this.name = name;
+        this.id = id;
+        this.img = this.getImg();
         this.bottom = bottom || false;
         this.nChars = 1;
+      }
+
+      getImg() {
+        switch (this.name) {
+          default: {
+            return NOAH_DIALOG_IMG;
+          }
+        }
       }
 
       finished() {
@@ -923,6 +979,77 @@ function sketchProc(processing) {
         }
         popMatrix();
         this.nChars++;
+      }
+    }
+
+    var outlineText = function(
+      text_,
+      x,
+      y,
+      textColor,
+      outlineColor,
+      outlineWidth
+    ) {
+      fill(outlineColor);
+      for (var dx = -outlineWidth; dx <= outlineWidth; dx++) {
+        for (var dy = -outlineWidth; dy <= outlineWidth; dy++) {
+          text(text_, x + dx, y + dy);
+        }
+      }
+      fill(textColor);
+      text(text_, x, y);
+    };
+
+    class HUD {
+      constructor() {}
+      drawLives() {
+        image(HUD_LIVES_IMG, 5, 5);
+        textFont(NGO_FONT, 32);
+        outlineText(
+          "x " + lives,
+          15 + HUD_LIVES_IMG.width,
+          5 + HUD_LIVES_IMG.height,
+          color(255, 255, 255),
+          color(100, 100, 100),
+          2
+        );
+      }
+      drawCoins() {
+        image(
+          HUD_COIN_IMG,
+          5,
+          7 + (HUD_LIVES_IMG.height - HUD_COIN_IMG.height)
+        );
+        textFont(NGO_FONT, 32);
+        outlineText(
+          "x " + noah.coins,
+          15 + HUD_COIN_IMG.width,
+          5 + HUD_LIVES_IMG.height,
+          color(255, 255, 255),
+          color(100, 100, 100),
+          2
+        );
+      }
+      drawScore() {
+        textFont(NGO_FONT, 32);
+        var t = "Score: " + noah.score.pad(8);
+        var tw = textWidth(t);
+        outlineText(
+          t,
+          width - tw - 5,
+          5 + HUD_LIVES_IMG.height,
+          color(255, 255, 255),
+          color(100, 100, 100),
+          2
+        );
+      }
+      draw() {
+        pushMatrix();
+        this.drawLives();
+        translate(80, 0);
+        this.drawCoins();
+        popMatrix();
+        this.drawScore();
       }
     }
 
@@ -969,7 +1096,7 @@ function sketchProc(processing) {
         var c = max(camera.x - camera.rx, 0);
         var cf = min(camera.x + camera.rx, layer.width);
         for (; c < cf; c++) {
-          var dx = (frameCount / 2) % (tilemap.tilewidth * tilemap.width);
+          var dx = (frameCount / 4) % (tilemap.tilewidth * tilemap.width);
           var col = c;
           if (layer.props.scroll) {
             var sd = layer.props.scrollDir;
@@ -1027,36 +1154,6 @@ function sketchProc(processing) {
       keys[key] = false;
     };
 
-    // dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
-    // dialogs.push(
-    //   new Dialog(
-    //     "Noah",
-    //     "It's barely even a game at this point.",
-    //     NOAH_DIALOG_IMG
-    //   )
-    // );
-    // dialogs.push(
-    //   new Dialog(
-    //     "Noah",
-    //     "Colm probably doesn't even care enough to give me decent lines.",
-    //     NOAH_DIALOG_IMG
-    //   )
-    // );
-    // dialogs.push(
-    //   new Dialog(
-    //     "Instructions",
-    //     "Use Space to grapple and arrow keys to move.",
-    //     NOAH_DIALOG_IMG
-    //   )
-    // );
-    // dialogs.push(
-    //   new Dialog(
-    //     "Instructions",
-    //     "Try not to die... there's like two things that could kill you.",
-    //     NOAH_DIALOG_IMG
-    //   )
-    // );
-
     var draw = function() {
       if (!gameInit) return;
       camera.update(noah, tilemap);
@@ -1080,9 +1177,23 @@ function sketchProc(processing) {
       }
 
       pushMatrix();
-      background(200, 200, 200);
+      background(20, 20, 20);
       switch (level) {
-        case "blank": {
+        case "gameover": {
+          textFont(NGO_FONT, 128);
+          var t = "GAME OVER";
+          var tw = textWidth(t);
+          outlineText(
+            t,
+            width / 2 - tw / 2,
+            height / 2,
+            color(255, 255, 255),
+            color(150, 150, 150),
+            8
+          );
+          break;
+        }
+        case "coming_soon": {
           image(
             NGO_COMING_SOON,
             width / 2 - NGO_COMING_SOON.width / 2,
@@ -1119,6 +1230,9 @@ function sketchProc(processing) {
         image(NGO_TITLE, width / 2 - NGO_TITLE.width / 2, 10);
         image(NGO_INSTRUCTIONS, width / 2 - NGO_INSTRUCTIONS.width / 2, 280);
         image(NGO_CREATOR, width / 2 - NGO_CREATOR.width / 2, 330);
+      }
+      if (!["HomeScreenMap", "gameover", "coming_soon"].includes(level)) {
+        hud.draw();
       }
       if (dialogs.length > 0) {
         dialogs[0].draw();
