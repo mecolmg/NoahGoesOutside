@@ -18,16 +18,17 @@ function sketchProc(processing) {
     var SCALE = 2;
     var CAMERA_BUFFER = 2;
     var GRAVITY = new PVector(0, 0.5, 0);
-    var PLAYER_JUMPS = 2;
-    var DEFAULT_MAXDX = 2;
-    var DEFAULT_MAXDY = 10;
+    var PLAYER_JUMPS = 1;
+    var DEFAULT_MAXDX = 2.5;
+    var DEFAULT_MAXDY = 5;
     var DEFAULT_FRICTION = 0.7;
     var DEFAULT_AIR_RES = 0.98;
     var DEFAULT_JUMP_VELOCITY = 7;
     var DEFAULT_FPS = 7;
+    var MAX_GRAPPLE_DIST = 100;
+    var GRAPPLE_SPEED = 10;
     /* @pjs font="VT323-Regular.ttf"; */
     var NGO_FONT = createFont("VT323", 32);
-    console.log(NGO_FONT);
     var NOAH_WALK_IMGS = [
       getImage("NGO_Noah/noah_walk_0.png"),
       getImage("NGO_Noah/noah_walk_1.png"),
@@ -52,7 +53,7 @@ function sketchProc(processing) {
     var keys = [];
     var dialogs = [];
     var spritesheets = {};
-    var tilemap, tiles, noah, camera, start, doors, enemies;
+    var tilemap, tiles, noah, camera, start, doors, enemies, grapplePoints;
     var showInstructions = false;
     var level = "Level1";
 
@@ -96,6 +97,7 @@ function sketchProc(processing) {
         start = getPoint(tilemap, "start") || { x: 100, y: 100 };
         doors = getDoors(tilemap);
         enemies = getEnemies(tilemap);
+        grapplePoints = getGrapplePoints(tilemap);
         var init = function() {
           tiles = getTiles(tilemap);
           noah = new Player(
@@ -116,7 +118,6 @@ function sketchProc(processing) {
     };
 
     var restartLevel = function() {
-      start = getPoint(tilemap, "start") || { x: 100, y: 100 };
       noah = new Player(
         start.x,
         start.y,
@@ -127,7 +128,6 @@ function sketchProc(processing) {
         NOAH_JUMP_IMGS
       );
       camera = new Camera(SCALE, CAMERA_BUFFER);
-      doors = getDoors(tilemap);
       enemies = getEnemies(tilemap);
     };
 
@@ -284,6 +284,39 @@ function sketchProc(processing) {
       return enemies;
     };
 
+    var getGrapplePoints = function(tilemap) {
+      var grapplePoints = [];
+      for (var i = 0; i < tilemap.layers.length; i++) {
+        if (tilemap.layers[i].props.grapplePoints) {
+          var layer = tilemap.layers[i];
+          for (var j = 0; j < layer.objects.length; j++) {
+            var obj = layer.objects[j];
+            obj.props = {};
+            if (obj.properties) {
+              obj.properties.forEach(function(prop) {
+                obj.props[prop.name] = prop.value;
+              });
+            }
+            grapplePoints.push(obj);
+          }
+        }
+      }
+      return grapplePoints;
+    };
+
+    var getActiveGP = function(grapplePoints, point) {
+      var minDist = -1;
+      var grapplePoint;
+      grapplePoints.forEach(function(gp) {
+        var dist = point.dist(new PVector(gp.x, gp.y, 0));
+        if (dist < MAX_GRAPPLE_DIST && (minDist === -1 || dist < minDist)) {
+          minDist = dist;
+          grapplePoint = gp;
+        }
+      });
+      return grapplePoint;
+    };
+
     var atDoor = function(loc, doors) {
       for (var i = 0; i < doors.length; i++) {
         var doorLoc = new PVector(doors[i].x, doors[i].y, 0);
@@ -354,6 +387,19 @@ function sketchProc(processing) {
           return false;
         }
         return true;
+      }
+
+      containsPoint(p) {
+        return (
+          p.x >= this.p.x &&
+          p.x <= this.p.x + this.w &&
+          p.y <= this.p.y &&
+          p.y >= this.p.y - this.h
+        );
+      }
+
+      centerPoint() {
+        return new PVector(this.p.x + this.w / 2, this.p.y - this.h / 2, 0);
       }
 
       collisionPoints() {
@@ -558,6 +604,11 @@ function sketchProc(processing) {
       constructor(x, y, w, h, dir, walkImgs, jumpImgs) {
         super(x, y, w, h, dir, walkImgs, jumpImgs);
         this.initialized = false;
+        this.dead = false;
+      }
+
+      hit() {
+        this.dead = true;
       }
     }
 
@@ -606,27 +657,167 @@ function sketchProc(processing) {
       constructor(x, y, w, h, dir, walkImgs, jumpImgs) {
         super(x, y, w, h, dir, walkImgs, jumpImgs);
         this.jumps = PLAYER_JUMPS;
+        this.hook = new PVector(x, y, 0);
+        this.grappleTarget = new PVector(x, y, 0);
+        this.grappling = false;
+        this.hooked = false;
       }
 
-      update(tilemap, tiles) {
+      update(tilemap, tiles, enemies, grapplePoints) {
         if (this.falling) {
           this.addVelocity(GRAVITY);
         }
-        this.updatePosition();
+        if (this.grappling) {
+          this.updateGrapple(enemies, grapplePoints);
+        }
+        this.updatePosition(enemies, grapplePoints);
         while (this.handleCollision(tilemap, tiles));
-        this.handleInput();
+        this.handleInput(grapplePoints);
       }
 
-      handleInput() {
-        if (keys[LEFT]) {
+      draw() {
+        if (this.grappling) {
+          stroke(70, 70, 70);
+          strokeWeight(2);
+          line(
+            this.p.x + this.w / 2,
+            this.p.y - this.h / 2,
+            this.hook.x,
+            this.hook.y
+          );
+          stroke(100, 100, 100);
+          line(
+            this.hook.x - 2,
+            this.hook.y - 2,
+            this.hook.x + 2,
+            this.hook.y + 2
+          );
+          line(
+            this.hook.x - 2,
+            this.hook.y + 2,
+            this.hook.x + 2,
+            this.hook.y - 2
+          );
+          line(this.hook.x - 3, this.hook.y, this.hook.x + 3, this.hook.y);
+          line(this.hook.x, this.hook.y - 3, this.hook.x, this.hook.y + 3);
+        }
+        super.draw();
+      }
+
+      upPressed() {
+        var pressed = keys[UP] || keys["w"] || keys["W"];
+        return pressed;
+      }
+      resetUp() {
+        keys[UP] = false;
+        keys["W"] = false;
+        keys["w"] = false;
+      }
+
+      leftPressed() {
+        return keys[LEFT] || keys["a"] || keys["A"];
+      }
+
+      rightPressed() {
+        return keys[RIGHT] || keys["d"] || keys["D"];
+      }
+
+      downPressed() {
+        return keys[DOWN] || keys["s"] || keys["S"];
+      }
+
+      grapplePressed() {
+        var pressed = keys[" "];
+        if (pressed) {
+          keys[" "] = false;
+        }
+        return pressed;
+      }
+
+      grapple(grapplePoints) {
+        if (this.grappling) {
+          this.grappling = false;
+          this.hooked = false;
+          return;
+        }
+        var grapplePoint = getActiveGP(grapplePoints, this.p);
+        if (grapplePoint !== undefined) {
+          this.grapplingTarget = new PVector(grapplePoint.x, grapplePoint.y, 0);
+          this.hook = this.centerPoint();
+          this.grappling = true;
+        } else {
+          this.grapplingTarget = PVector.add(
+            this.p,
+            new PVector(this.dir === RIGHT ? width : -width, 0, 0)
+          );
+          this.hook = this.centerPoint();
+          this.grappling = true;
+        }
+      }
+
+      updateGrapple(enemies, grapplePoints) {
+        if (this.hooked) {
+          this.ropeLength = max(0, this.ropeLength - 5);
+          if (this.ropeLength === 0) {
+            this.hooked = false;
+            this.grappling = false;
+          }
+          var playerPoint = new PVector(
+            this.p.x + (this.dir === RIGHT ? 0 : this.w),
+            this.p.y,
+            0
+          );
+          var dist = round(this.hook.dist(playerPoint));
+          var dir = PVector.sub(this.hook, playerPoint);
+          dir.normalize();
+          console.log(dist, dist - this.ropeLength, dir);
+          dir.mult(dist - this.ropeLength);
+          this.v = dir;
+        } else if (this.grapplingTarget.dist(this.hook) < GRAPPLE_SPEED) {
+          this.hook.set(this.grapplingTarget.x, this.grapplingTarget.y, 0);
+          this.hooked = true;
+          this.ropeLength = round(this.hook.dist(this.centerPoint()));
+        } else {
+          var dir = PVector.sub(this.grapplingTarget, this.hook);
+          dir.normalize();
+          dir.mult(GRAPPLE_SPEED);
+          this.hook.add(dir);
+        }
+        enemies.forEach(function(enemy) {
+          if (enemy.containsPoint(this.hook)) {
+            enemy.hit();
+          }
+        }, this);
+        if (this.p.dist(this.hook) > MAX_GRAPPLE_DIST) {
+          this.grappling = false;
+          this.hooked = false;
+        }
+      }
+
+      handleInput(grapplePoints) {
+        var up = this.upPressed(),
+          down = this.downPressed(),
+          left = this.leftPressed(),
+          right = this.rightPressed(),
+          grapple = this.grapplePressed();
+        if (left) {
           this.moveLeft();
-        } else if (keys[RIGHT]) {
+        } else if (right) {
           this.moveRight();
         }
-        if (keys[UP] && (!this.falling || this.jumps > 0)) {
-          keys[UP] = false;
+        if (up && this.hooked) {
+          this.ropeLength = max(0, this.ropeLength - 5);
+          if (this.ropeLength === 0) {
+            this.hooked = false;
+            this.grappling = false;
+          }
+        } else if (up && (!this.falling || this.jumps > 0)) {
           this.jumps--;
           this.jump();
+          this.resetUp();
+        }
+        if (grapple) {
+          this.grapple(grapplePoints);
         }
       }
 
@@ -772,6 +963,8 @@ function sketchProc(processing) {
         if (dialogs.length > 0 && dialogs[0].finished()) {
           dialogs.shift();
         }
+      }
+      if (keys[DOWN] || keys["s"]) {
         var door = atDoor(noah.p, doors);
         if (door && door.props.nextLevel) {
           level = door.props.nextLevel;
@@ -785,20 +978,29 @@ function sketchProc(processing) {
       keys[key] = false;
     };
 
-    dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
-    dialogs.push(new Dialog("Noah", "Like... REALLY sucks.", NOAH_DIALOG_IMG));
+    // dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
+    // dialogs.push(new Dialog("Noah", "Like... REALLY sucks.", NOAH_DIALOG_IMG));
 
     var draw = function() {
       if (!gameInit) return;
       camera.update(noah, tilemap);
       if (dialogs.length === 0) {
-        noah.update(tilemap, tiles);
-        enemies.forEach(function(enemy) {
+        noah.update(tilemap, tiles, enemies, grapplePoints);
+        if (noah.p.y > tilemap.tileheight * tilemap.height + 100) {
+          return restartLevel();
+        }
+        for (var i = 0; i < enemies.length; i++) {
+          var enemy = enemies[i];
+          if (enemy.dead) {
+            enemies.splice(i, 1);
+            i--;
+            continue;
+          }
           enemy.update(tilemap, tiles);
           if (enemy.intersects(noah)) {
             return restartLevel();
           }
-        });
+        }
       }
 
       pushMatrix();
@@ -821,6 +1023,14 @@ function sketchProc(processing) {
           enemies.forEach(function(enemy) {
             enemy.draw();
           });
+          var activeGP = getActiveGP(grapplePoints, noah.p);
+          if (activeGP !== undefined) {
+            var d = map(sin(frameCount / 15), -1, 1, 0, 10);
+            stroke(255, 0, 0);
+            strokeWeight(0);
+            noFill();
+            ellipse(activeGP.x, activeGP.y, d, d);
+          }
           break;
         }
       }
