@@ -84,7 +84,7 @@ function sketchProc(processing) {
     var fetchSpritesheets = function(tilemap) {
       for (var j = 0; j < tilemap.tilesets.length; j++) {
         var tileset = tilemap.tilesets[j];
-        if (tileset.image) {
+        if (tileset.image && !spritesheets[tileset.image]) {
           spritesheets[tileset.image] = getImage(tileset.image);
         }
       }
@@ -93,7 +93,8 @@ function sketchProc(processing) {
     var loadLevel = function(levelName) {
       if (TileMaps[levelName]) {
         gameInit = false;
-        tilemap = getTileMap(TileMaps[levelName]);
+        level = levelName;
+        tilemap = getTileMap(TileMaps[level]);
         start = getPoint(tilemap, "start") || { x: 100, y: 100 };
         doors = getDoors(tilemap);
         enemies = getEnemies(tilemap);
@@ -118,6 +119,7 @@ function sketchProc(processing) {
     };
 
     var restartLevel = function() {
+      tilemap = getTileMap(TileMaps[level]);
       noah = new Player(
         start.x,
         start.y,
@@ -675,6 +677,7 @@ function sketchProc(processing) {
         this.coins = 0;
         this.score = 0;
         this.gems = [];
+        this.collectPoints = new Set();
       }
 
       update(tilemap, tiles, enemies, grapplePoints) {
@@ -847,8 +850,10 @@ function sketchProc(processing) {
 
       handleCollection(tile, layer, tx, ty) {
         super.handleCollection(tile, layer, tx, ty);
-        layer.data[ty * layer.width + tx] = 0;
-        console.log(tile);
+        var key = [tx, ty].toString();
+        if (this.collectPoints.has(key)) return;
+        this.collectPoints.add(key);
+
         if (tile.props.coins) {
           this.coins += tile.props.coins;
         }
@@ -957,7 +962,7 @@ function sketchProc(processing) {
       };
     };
 
-    var drawLayer = function(camera, layer, tilemap, tiles) {
+    var drawLayer = function(camera, layer, tilemap, tiles, collectPoints) {
       var r = min(camera.y + camera.ry, layer.height - 1);
       var rf = max(camera.y - camera.ry, 0);
       for (; r >= rf; r--) {
@@ -972,6 +977,12 @@ function sketchProc(processing) {
           }
           var id = layer.data[r * layer.width + col];
           if (id !== 0) {
+            if (
+              layer.props.collectibles &&
+              collectPoints.has([c, r].toString())
+            ) {
+              continue;
+            }
             var tile = tiles[id];
             var x = col * tilemap.tilewidth;
             if (layer.props.scroll) {
@@ -1006,8 +1017,7 @@ function sketchProc(processing) {
       if (keys[DOWN] || keys["s"]) {
         var door = atDoor(noah.p, doors);
         if (door && door.props.nextLevel) {
-          level = door.props.nextLevel;
-          loadLevel(level);
+          loadLevel(door.props.nextLevel);
         }
       }
     };
@@ -1083,7 +1093,7 @@ function sketchProc(processing) {
         default: {
           camera.show();
           tilemap.layers.forEach(function(layer) {
-            drawLayer(camera, layer, tilemap, tiles);
+            drawLayer(camera, layer, tilemap, tiles, noah.collectPoints);
           });
           noah.draw();
           enemies.forEach(function(enemy) {
