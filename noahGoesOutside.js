@@ -304,12 +304,17 @@ function sketchProc(processing) {
       return grapplePoints;
     };
 
-    var getActiveGP = function(grapplePoints, point) {
+    var getActiveGP = function(grapplePoints, point, dir) {
       var minDist = -1;
       var grapplePoint;
       grapplePoints.forEach(function(gp) {
         var dist = point.dist(new PVector(gp.x, gp.y, 0));
-        if (dist < MAX_GRAPPLE_DIST && (minDist === -1 || dist < minDist)) {
+        var pDir = PVector.sub(gp, point).x > 0 ? RIGHT : LEFT;
+        if (
+          pDir === dir &&
+          dist < MAX_GRAPPLE_DIST &&
+          (minDist === -1 || dist < minDist)
+        ) {
           minDist = dist;
           grapplePoint = gp;
         }
@@ -431,12 +436,16 @@ function sketchProc(processing) {
             }
             var id = layer.data[ty * layer.width + tx];
             if (id !== 0) {
+              if (layer.props.collectibles) {
+                this.handleCollection(tiles[id], layer, tx, ty);
+                return false;
+              }
               tile = tiles[id];
               tileLayer = layer;
               return true;
             }
             return false;
-          });
+          }, this);
           collisions[k] = { x: tx, y: ty, collideTop: false, collide: false };
           if (tile) {
             collisions[k] = {
@@ -480,6 +489,8 @@ function sketchProc(processing) {
         }
         return false;
       }
+
+      handleCollection(tile, layer, tx, ty) {}
 
       collideLeft() {
         this.p.x = ceil(this.p.x / tilemap.tilewidth) * tilemap.tilewidth;
@@ -661,6 +672,9 @@ function sketchProc(processing) {
         this.grappleTarget = new PVector(x, y, 0);
         this.grappling = false;
         this.hooked = false;
+        this.coins = 0;
+        this.score = 0;
+        this.gems = [];
       }
 
       update(tilemap, tiles, enemies, grapplePoints) {
@@ -740,7 +754,11 @@ function sketchProc(processing) {
           this.hooked = false;
           return;
         }
-        var grapplePoint = getActiveGP(grapplePoints, this.p);
+        var grapplePoint = getActiveGP(
+          grapplePoints,
+          this.centerPoint(),
+          this.dir
+        );
         if (grapplePoint !== undefined) {
           this.grapplingTarget = new PVector(grapplePoint.x, grapplePoint.y, 0);
           this.hook = this.centerPoint();
@@ -770,7 +788,6 @@ function sketchProc(processing) {
           var dist = round(this.hook.dist(playerPoint));
           var dir = PVector.sub(this.hook, playerPoint);
           dir.normalize();
-          console.log(dist, dist - this.ropeLength, dir);
           dir.mult(dist - this.ropeLength);
           this.v = dir;
         } else if (this.grapplingTarget.dist(this.hook) < GRAPPLE_SPEED) {
@@ -826,6 +843,22 @@ function sketchProc(processing) {
           return true;
         }
         return false;
+      }
+
+      handleCollection(tile, layer, tx, ty) {
+        super.handleCollection(tile, layer, tx, ty);
+        layer.data[ty * layer.width + tx] = 0;
+        console.log(tile);
+        if (tile.props.coins) {
+          this.coins += tile.props.coins;
+        }
+        if (tile.props.score) {
+          this.score += tile.props.score;
+        }
+        if (tile.props.gemID) {
+          this.gems.push(tile.props.gemID);
+        }
+        console.log(this.coins, this.score, this.gems);
       }
 
       collideBottom() {
@@ -945,7 +978,13 @@ function sketchProc(processing) {
               x = mod(x + sd * dx, tilemap.width * tilemap.tilewidth);
             }
             var y = (r + 1) * tilemap.tileheight - tile.height;
-            image(tile.image, x, y);
+            pushMatrix();
+            translate(x + tile.width / 2, y);
+            if (layer.props.flip && floor(frameCount / 20) % 2 === 0) {
+              scale(-1, 1);
+            }
+            image(tile.image, -tile.width / 2, 0);
+            popMatrix();
           }
         }
       }
@@ -978,35 +1017,35 @@ function sketchProc(processing) {
       keys[key] = false;
     };
 
-    dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
-    dialogs.push(
-      new Dialog(
-        "Noah",
-        "It's barely even a game at this point.",
-        NOAH_DIALOG_IMG
-      )
-    );
-    dialogs.push(
-      new Dialog(
-        "Noah",
-        "Colm probably doesn't even care enough to give me decent lines.",
-        NOAH_DIALOG_IMG
-      )
-    );
-    dialogs.push(
-      new Dialog(
-        "Instructions",
-        "Use Space to grapple and arrow keys to move.",
-        NOAH_DIALOG_IMG
-      )
-    );
-    dialogs.push(
-      new Dialog(
-        "Instructions",
-        "Try not to die... there's like two things that could kill you.",
-        NOAH_DIALOG_IMG
-      )
-    );
+    // dialogs.push(new Dialog("Noah", "This Game Sucks.", NOAH_DIALOG_IMG));
+    // dialogs.push(
+    //   new Dialog(
+    //     "Noah",
+    //     "It's barely even a game at this point.",
+    //     NOAH_DIALOG_IMG
+    //   )
+    // );
+    // dialogs.push(
+    //   new Dialog(
+    //     "Noah",
+    //     "Colm probably doesn't even care enough to give me decent lines.",
+    //     NOAH_DIALOG_IMG
+    //   )
+    // );
+    // dialogs.push(
+    //   new Dialog(
+    //     "Instructions",
+    //     "Use Space to grapple and arrow keys to move.",
+    //     NOAH_DIALOG_IMG
+    //   )
+    // );
+    // dialogs.push(
+    //   new Dialog(
+    //     "Instructions",
+    //     "Try not to die... there's like two things that could kill you.",
+    //     NOAH_DIALOG_IMG
+    //   )
+    // );
 
     var draw = function() {
       if (!gameInit) return;
@@ -1050,7 +1089,11 @@ function sketchProc(processing) {
           enemies.forEach(function(enemy) {
             enemy.draw();
           });
-          var activeGP = getActiveGP(grapplePoints, noah.p);
+          var activeGP = getActiveGP(
+            grapplePoints,
+            noah.centerPoint(),
+            noah.dir
+          );
           if (activeGP !== undefined) {
             var d = map(sin(frameCount / 15), -1, 1, 0, 10);
             stroke(255, 0, 0);
