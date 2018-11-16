@@ -55,7 +55,7 @@ function sketchProc(processing) {
     var spritesheets = {};
     var tilemap, tiles, noah, camera, start, doors, enemies, grapplePoints;
     var showInstructions = false;
-    var level = "Level1";
+    var level = "HomeScreenMap";
 
     // uc = undefined check. This is a quick
     var uc = function(x) {
