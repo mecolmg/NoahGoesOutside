@@ -3,16 +3,73 @@
 <head>
   <title>Noah Goes Outside</title>
   <link href="https://fonts.googleapis.com/css?family=VT323" rel="stylesheet">
+  <style>
+    body {
+      background-color: #444;
+    }
+    p {
+      margin: 0;
+      line-height: 0;
+    }
+    #mycanvas {
+      border: 36px solid #bbb;
+      border-radius: 12px;
+      margin-bottom: 0;
+    }
+    #base {
+      width: 200px;
+      height: 100px;
+      background-color: #ccc;
+      margin: 0 auto;
+    }
+    #base2 {
+      width: 400px;
+      height: 100px;
+      background-color: #bbb;
+      margin: 0 auto;
+      display: block;
+      position: relative;
+      border-radius: 6px;
+    }
+    #power {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      background: #a00;
+      width: 20px;
+      height: 20px;
+      text-align: center;
+      color: white;
+      border-radius: 50%;
+      font-weight: bold;
+      line-height: 20px;
+    }
+    #disk {
+      width: 100px;
+      height: 8px;
+      background: #000;
+      border-radius: 4px;
+      position: absolute;
+      right: 45px;
+      bottom: 16px;
+    }
+  </style>
 </head>
 <body>
   <p align="center">
     <canvas id="mycanvas"></canvas>
+    <div id="base"></div>
+    <div id="base2">
+      <div id="power">|</div>
+      <div id="disk"></div>
+    </div>
   </p>
 </body>
 
 <script src="processing-1.4.8.min.js"></script>
 <script src="HomeScreenMap.js"></script>
 <script src="Level1.js"></script>
+<script src="Level2.js"></script>
 <script src="TileMap1.js"></script>
 <script src="noahGoesOutside.js"></script>
 <script type="application/javascript">

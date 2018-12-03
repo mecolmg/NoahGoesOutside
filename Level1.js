@@ -364,7 +364,7 @@
                         {
                          "name":"nextLevel",
                          "type":"string",
-                         "value":"coming_soon"
+                         "value":"Level2"
                         }],
                  "rotation":0,
                  "type":"",

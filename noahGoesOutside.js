@@ -678,15 +678,75 @@ function sketchProc(processing) {
       }
     }
 
+    class ExplosionParticle {
+      constructor() {
+        this.d = 0;
+        this.angle = random(0, Math.PI * 2);
+        this.speed = random(0.3, 1);
+        this.color = color(255, random(255), 0);
+        this.size = random(5, 8);
+      }
+
+      update(t) {
+        this.d += this.speed;
+        this.speed *= 0.97;
+      }
+
+      draw(t) {
+        pushMatrix();
+        rotate(this.angle);
+        noStroke();
+        fill(this.color, 255 - t);
+        ellipse(this.d, 0, this.size, this.size);
+        popMatrix();
+      }
+    }
+
+    class Explosion {
+      constructor(nParticles, p) {
+        this.p = new PVector(p.x, p.y);
+        this.particles = [];
+        for (var i = 0; i < nParticles; i++) {
+          this.particles.push(new ExplosionParticle());
+        }
+        this.t = 0;
+      }
+
+      draw() {
+        pushMatrix();
+        translate(this.p.x, this.p.y);
+        this.particles.forEach(function(particle) {
+          particle.update(this.t);
+          particle.draw(this.t);
+        }, this);
+        popMatrix();
+        this.t += 2;
+        this.p.y += 0.3;
+      }
+    }
+
     class Enemy extends Character {
       constructor(x, y, w, h, dir, walkImgs, jumpImgs) {
         super(x, y, w, h, dir, walkImgs, jumpImgs);
         this.initialized = false;
+        this.exploding = false;
         this.dead = false;
       }
 
       hit() {
-        this.dead = true;
+        this.exploding = true;
+        this.explosion = new Explosion(30, this.p);
+      }
+
+      draw() {
+        if (this.exploding) {
+          if (this.explosion.t > 255) {
+            this.dead = true;
+          }
+          this.explosion.draw();
+        } else {
+          super.draw();
+        }
       }
     }
 
@@ -1180,7 +1240,10 @@ function sketchProc(processing) {
       if (dialogs.length === 0) {
         noah.update(tilemap, tiles, enemies, grapplePoints);
         if (noah.p.y > tilemap.tileheight * tilemap.height + 100) {
-          return restartLevel();
+          restartLevel();
+          if (level !== "gameover") {
+            return;
+          }
         }
         for (var i = 0; i < enemies.length; i++) {
           var enemy = enemies[i];
@@ -1190,8 +1253,11 @@ function sketchProc(processing) {
             continue;
           }
           enemy.update(tilemap, tiles);
-          if (enemy.intersects(noah)) {
-            return restartLevel();
+          if (enemy.intersects(noah) && !enemy.exploding) {
+            restartLevel();
+            if (level !== "gameover") {
+              return;
+            }
           }
         }
       }

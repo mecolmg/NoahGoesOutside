@@ -380,7 +380,7 @@
   <object id="30" name="Door 1" x="1869" y="336">
    <properties>
     <property name="door" type="bool" value="true"/>
-    <property name="nextLevel" value="coming_soon"/>
+    <property name="nextLevel" value="Level2"/>
    </properties>
    <point/>
   </object>
