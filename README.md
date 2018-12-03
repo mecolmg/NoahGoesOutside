@@ -12,3 +12,5 @@ https://mecolmg.github.io/NoahGoesOutside/
 
 Tile maps for the game are create through
 [Tiled Map Editor](https://www.mapeditor.org/).
+
+![Tiled Level 1](TiledLevel1.png)
